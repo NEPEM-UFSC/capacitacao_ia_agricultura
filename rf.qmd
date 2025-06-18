@@ -1,0 +1,111 @@
+---
+title: "rf"
+format: html
+---
+
+```{r}
+library(rio)
+library(tidyverse)
+library(ggrepel)
+
+df <- import("example.xlsx")
+
+ggplot(df, aes(area, length, size = elongation)) +
+  geom_point() +
+  geom_text_repel(aes(label = specie)) +
+  geom_vline(xintercept = 6e5, color = "red")
+
+```
+
+
+# Exemplo numérico
+
+```{r}
+arvore1 <- function(df){
+  if(df[1, "area"] < 600000){
+    especie <- "E3"
+  } else{
+    if(df[1, "elongation"]  > 0.25){
+      especie <- "E17"
+    } else{
+      especie <- "E4"
+    }
+  }
+  return(especie)
+}
+
+x <- NULL
+for(i in 1:12){
+  x[i] <- arvore1(df[i, ])
+}
+x
+
+```
+
+```{mermaid}
+graph TD
+    A[Área] -->|<= 600000| B[E3]
+    A -->|> 600000| C[Elongacao]
+    C -->|< 0.25| D[E4]
+    C -->|> 0.25| E[E17]
+
+```
+
+
+
+# Exemplo fávia dataset
+
+## Random Forest
+```{r}
+df2 <- 
+  import("pcv.csv") |> 
+  select(-c(img, id, x, y))
+
+
+# Garantir que especie seja fator (importante para classificação)
+df2$specie <- as.factor(df2$specie)
+
+# Dividir em treino (70%) e teste (30%)
+set.seed(123)
+split <- createDataPartition(df2$specie, p = 0.7, list = FALSE)
+treino <- df2[split, ]
+teste <- df2[-split, ]
+
+# Definindo o método de validação cruzada (10-fold CV)
+ctrl <- trainControl(method = "cv", 
+                     number = 10,
+               verboseIter = TRUE)
+tunegrid <- expand.grid(mtry = c(7))
+
+# Treinando o modelo Random Forest
+set.seed(123)
+modelo_rf <- train(
+  specie ~ .,
+  data = treino,
+  method = "rf",
+  trControl = ctrl,
+  tuneGrid = tunegrid,
+  ntree = 300,
+  importance = TRUE
+)
+
+
+# Resumo do modelo treinado
+print(modelo_rf)
+
+# Fazendo predições nos dados de teste
+predicoes <- predict(modelo_rf, newdata = teste)
+
+# Avaliando acurácia no conjunto de teste
+cm <- confusionMatrix(predicoes, teste$specie)
+
+# Matriz de confusão
+dfcm <- as.data.frame(cm$table)
+ggplot(dfcm, aes(Prediction, Reference, fill = Freq)) +
+  geom_tile(color = "black") +
+  geom_text(aes(label = Freq), size = 3) +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
